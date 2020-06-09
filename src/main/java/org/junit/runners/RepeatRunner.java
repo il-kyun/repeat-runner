@@ -46,9 +46,10 @@ public class RepeatRunner extends BlockJUnit4ClassRunner {
         try {
             withRules = this.getClass().getSuperclass().getDeclaredMethod("withRules", FrameworkMethod.class, Object.class, Statement.class);
             withRules.setAccessible(true);
-
         } catch (NoSuchMethodException e) {
             throw new IllegalArgumentException("no withRules method.");
+        } catch (Exception e) {
+            throw new UndeclaredThrowableException(e, "UndeclaredThrowableException");
         }
 
         Statement result;
@@ -58,6 +59,8 @@ public class RepeatRunner extends BlockJUnit4ClassRunner {
             throw new IllegalStateException("can not access to method.");
         } catch (InvocationTargetException e) {
             throw new IllegalArgumentException("can not invoke method.");
+        } catch (Exception e) {
+            throw new UndeclaredThrowableException(e, "UndeclaredThrowableException");
         }
 
         return result;
@@ -65,5 +68,11 @@ public class RepeatRunner extends BlockJUnit4ClassRunner {
 
     protected Statement withPotentialRepeat(FrameworkMethod frameworkMethod, Statement statement) {
         return new RepeatRun(statement, frameworkMethod.getMethod());
+    }
+
+    private static class UndeclaredThrowableException extends RuntimeException {
+        public UndeclaredThrowableException(Throwable undeclaredThrowable, String message) {
+            super(message, undeclaredThrowable);
+        }
     }
 }
