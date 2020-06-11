@@ -18,7 +18,6 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import java.lang.reflect.Modifier;
 
 
 public class RepeatRunner extends BlockJUnit4ClassRunner {
