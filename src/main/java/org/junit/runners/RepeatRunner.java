@@ -1,5 +1,7 @@
 package org.junit.runners;
 
+import org.junit.Test;
+import org.junit.Timed;
 import org.junit.internal.runners.model.ReflectiveCallable;
 import org.junit.internal.runners.statements.Fail;
 import org.junit.runner.Description;
@@ -7,14 +9,20 @@ import org.junit.runner.notification.RunNotifier;
 import org.junit.runners.model.FrameworkMethod;
 import org.junit.runners.model.InitializationError;
 import org.junit.runners.model.Statement;
+import org.junit.runners.statements.FailOnTimeoutAndTimeUnit;
 import org.junit.runners.statements.RepeatRun;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 
 public class RepeatRunner extends BlockJUnit4ClassRunner {
+
+    private static final long ZERO_LONG = 0L;
 
     private static final Method withRulesMethod;
 
@@ -68,11 +76,11 @@ public class RepeatRunner extends BlockJUnit4ClassRunner {
 
         Statement statement = methodInvoker(method, test);
         statement = possiblyExpectingExceptions(method, test, statement);
-        statement = withPotentialTimeout(method, test, statement);
         statement = withBefores(method, test, statement);
         statement = withAfters(method, test, statement);
         statement = withRulesReflectively(method, test, statement);
         statement = withPotentialRepeat(method, statement);
+        statement = withPotentialTimeout(method, test, statement);
         return statement;
     }
 
@@ -104,4 +112,60 @@ public class RepeatRunner extends BlockJUnit4ClassRunner {
             super(message, undeclaredThrowable);
         }
     }
+
+    @SuppressWarnings("deprecation")
+    @Override
+    protected Statement withPotentialTimeout(FrameworkMethod frameworkMethod, Object testInstance, Statement next) {
+
+        Optional<Long> optionalPositiveTimedTimeout = getPositiveTimedTimeout(frameworkMethod);
+        Optional<Long> optionalPositiveJUnitTimeout = getPositiveJUnitTimeout(frameworkMethod);
+
+        if (optionalPositiveTimedTimeout.isPresent() && optionalPositiveJUnitTimeout.isPresent()) {
+            throw new IllegalStateException("duplicated timeout setting on @Test and @Timed");
+        }
+
+        if (optionalPositiveTimedTimeout.isPresent()) {
+            Long timedTimeout = optionalPositiveTimedTimeout.get();
+            TimeUnit timeUnit = getTimedTimeUnit(frameworkMethod);
+            return new FailOnTimeoutAndTimeUnit(next, timedTimeout, timeUnit);
+        }
+
+        if (optionalPositiveJUnitTimeout.isPresent()) {
+            Long junitTimeout = optionalPositiveJUnitTimeout.get();
+            return new FailOnTimeoutAndTimeUnit(next, junitTimeout);
+        }
+
+        return next;
+    }
+
+    private Optional<Long> getPositiveJUnitTimeout(FrameworkMethod frameworkMethod) {
+        long junitTimeout = getAnnotation(frameworkMethod, Test.class)
+                .map(Test::timeout)
+                .map(timeout -> Math.max(ZERO_LONG, timeout))
+                .orElse(ZERO_LONG);
+
+        return junitTimeout == ZERO_LONG ? Optional.empty() : Optional.of(junitTimeout);
+    }
+
+    private Optional<Long> getPositiveTimedTimeout(FrameworkMethod frameworkMethod) {
+        long timedTimeout = getTimedAnnotation(frameworkMethod)
+                .map(Timed::timeout)
+                .map(timeout -> Math.max(ZERO_LONG, timeout))
+                .orElse(ZERO_LONG);
+
+        return timedTimeout == ZERO_LONG ? Optional.empty() : Optional.of(timedTimeout);
+    }
+
+    private TimeUnit getTimedTimeUnit(FrameworkMethod frameworkMethod) {
+        return getTimedAnnotation(frameworkMethod).map(Timed::timeUnit).orElse(TimeUnit.MILLISECONDS);
+    }
+
+    private Optional<Timed> getTimedAnnotation(FrameworkMethod frameworkMethod) {
+        return getAnnotation(frameworkMethod, Timed.class);
+    }
+
+    private <T extends Annotation> Optional<T> getAnnotation(FrameworkMethod frameworkMethod, Class<T> annotationType) {
+        return Optional.ofNullable(frameworkMethod.getAnnotation(annotationType));
+    }
+
 }
